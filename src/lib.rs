@@ -25,7 +25,41 @@ pub struct FrameHeader {
     channels: u8,
     bits_per_sample: u8,
     endianness: Endianness,
-    id: Option<u64>,
+
+    #[cfg(not(target_arch = "wasm32"))]
+    id: Option<u64>, // Regular `u64` for non-WASM targets
+
+    #[cfg(target_arch = "wasm32")]
+    #[serde(
+        serialize_with = "serialize_id_wasm",
+        deserialize_with = "deserialize_id_wasm"
+    )]
+    id: Option<u64>, // Serialized as a String in WASM
+}
+
+#[cfg(target_arch = "wasm32")]
+fn serialize_id_wasm<S>(id: &Option<u64>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match id {
+        Some(value) => serializer.serialize_some(&value.to_string()),
+        None => serializer.serialize_none(),
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn deserialize_id_wasm<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    let id: Option<String> = Option::deserialize(deserializer)?;
+    match id {
+        Some(id_str) => id_str.parse::<u64>().map(Some).map_err(D::Error::custom),
+        None => Ok(None),
+    }
 }
 
 impl FrameHeader {
