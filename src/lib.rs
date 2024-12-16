@@ -501,7 +501,6 @@ impl FrameHeader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
 
     fn create_test_header() -> Vec<u8> {
         let header = FrameHeader::new(
@@ -716,7 +715,7 @@ mod tests {
         assert_eq!(decoded.size(), 12);
 
         // Test patching ID
-        let mut header_bytes = create_test_header();
+        let header_bytes = create_test_header();
         assert_eq!(header_bytes.len(), 4); // No ID initially
 
         let mut extended_bytes = vec![0; 12];
@@ -764,7 +763,7 @@ mod tests {
         assert!(FrameHeader::extract_id(&invalid_header).is_err());
 
         // Test truncated header with ID flag set
-        let mut truncated = header_with_id[..4].to_vec();
+        let truncated = header_with_id[..4].to_vec();
         assert!(FrameHeader::extract_id(&truncated).is_err());
     }
 }
