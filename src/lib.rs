@@ -848,4 +848,93 @@ mod tests {
         assert!(decoded.id().is_some());
         assert!(decoded.pts().is_some());
     }
+    #[test]
+    fn test_valid_opus_and_flac_sample_sizes_with_varied_pts_and_ids() {
+        let opus_sample_sizes = [80, 160, 240, 480, 960, 1920, 2880];
+        let flac_sample_sizes = [512, 1024, 2048];
+        let sample_rates = [44100, 48000, 88200, 96000];
+        let channels_list = [1, 2, 8, 16];
+        let bits_list = [16, 24, 32];
+        let endianness_list = [Endianness::LittleEndian, Endianness::BigEndian];
+        let pts_values = [
+            1_670_000_000_000_000,
+            1_671_000_000_000_000,
+            1_672_000_000_000_000,
+            1_673_000_000_000_000,
+            1_674_000_000_000_000,
+            1_675_000_000_000_000,
+        ];
+        let id_values = [
+            0xFFFFFFFFFFFFFFFF,
+            0x0123456789ABCDEF,
+            0xDEADBEEFDEADBEEF,
+            0,
+            1,
+            42,
+        ];
+        for &encoding in &[EncodingFlag::Opus, EncodingFlag::FLAC] {
+            let sample_sizes: &[u16] = match encoding {
+                EncodingFlag::Opus => &opus_sample_sizes,
+                EncodingFlag::FLAC => &flac_sample_sizes,
+                _ => continue,
+            };
+            for &sample_size in sample_sizes {
+                for &sample_rate in &sample_rates {
+                    for &channels in &channels_list {
+                        for &bits in &bits_list {
+                            for &endianness in &endianness_list {
+                                for &id_val in &id_values {
+                                    for &pts_val in &pts_values {
+                                        let header = FrameHeader::new(
+                                            encoding,
+                                            sample_size,
+                                            sample_rate,
+                                            channels,
+                                            bits,
+                                            endianness,
+                                            Some(id_val),
+                                            Some(pts_val),
+                                        );
+
+                                        assert!(
+                                        header.is_ok(),
+                                        "Failed to create header for encoding: {:?}, sample_size: {}, sample_rate: {}, channels: {}, bits: {}, endianness: {:?}, id: {:?}, pts: {:?}",
+                                        encoding, sample_size, sample_rate, channels, bits, endianness, id_val, pts_val
+                                    );
+
+                                        let header = header.unwrap();
+                                        let mut buffer = Vec::new();
+
+                                        assert!(
+                                        header.encode(&mut buffer).is_ok(),
+                                        "Failed to encode header for encoding: {:?}, sample_size: {}, sample_rate: {}, channels: {}, bits: {}, endianness: {:?}, id: {:?}, pts: {:?}",
+                                        encoding, sample_size, sample_rate, channels, bits, endianness, id_val, pts_val
+                                    );
+
+                                        let decoded = FrameHeader::decode(&mut &buffer[..]);
+
+                                        assert!(
+                                        decoded.is_ok(),
+                                        "Failed to decode header for encoding: {:?}, sample_size: {}, sample_rate: {}, channels: {}, bits: {}, endianness: {:?}, id: {:?}, pts: {:?}",
+                                        encoding, sample_size, sample_rate, channels, bits, endianness, id_val, pts_val
+                                    );
+
+                                        let decoded = decoded.unwrap();
+                                        assert_eq!(*decoded.encoding(), encoding);
+                                        assert_eq!(decoded.sample_size(), sample_size);
+                                        assert_eq!(decoded.sample_rate(), sample_rate);
+                                        assert_eq!(decoded.channels(), channels);
+                                        assert_eq!(decoded.bits_per_sample(), bits);
+                                        assert_eq!(*decoded.endianness(), endianness);
+                                        assert_eq!(decoded.id(), Some(id_val));
+                                        assert_eq!(decoded.pts(), Some(pts_val));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
