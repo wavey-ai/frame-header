@@ -937,4 +937,207 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_patch_field_isolation() {
+        // Create a header with known values for all fields
+        let original = FrameHeader::new(
+            EncodingFlag::PCMSigned,
+            1024,
+            48000,
+            4,
+            24,
+            Endianness::LittleEndian,
+            Some(0xDEADBEEF),
+            Some(0xCAFEBABE),
+        )
+        .unwrap();
+
+        let mut buffer = Vec::new();
+        original.encode(&mut buffer).unwrap();
+
+        // Test sample size patching
+        let mut test_buffer = buffer.clone();
+        FrameHeader::patch_sample_size(&mut test_buffer, 2048).unwrap();
+        let updated = FrameHeader::decode(&mut &test_buffer[..]).unwrap();
+        assert_eq!(updated.sample_size(), 2048); // Changed field
+        assert_eq!(*updated.encoding(), *original.encoding());
+        assert_eq!(updated.sample_rate(), original.sample_rate());
+        assert_eq!(updated.channels(), original.channels());
+        assert_eq!(updated.bits_per_sample(), original.bits_per_sample());
+        assert_eq!(*updated.endianness(), *original.endianness());
+        assert_eq!(updated.id(), original.id());
+        assert_eq!(updated.pts(), original.pts());
+
+        // Test encoding patching
+        let mut test_buffer = buffer.clone();
+        FrameHeader::patch_encoding(&mut test_buffer, EncodingFlag::FLAC).unwrap();
+        let updated = FrameHeader::decode(&mut &test_buffer[..]).unwrap();
+        assert_eq!(*updated.encoding(), EncodingFlag::FLAC); // Changed field
+        assert_eq!(updated.sample_size(), original.sample_size());
+        assert_eq!(updated.sample_rate(), original.sample_rate());
+        assert_eq!(updated.channels(), original.channels());
+        assert_eq!(updated.bits_per_sample(), original.bits_per_sample());
+        assert_eq!(*updated.endianness(), *original.endianness());
+        assert_eq!(updated.id(), original.id());
+        assert_eq!(updated.pts(), original.pts());
+
+        // Test sample rate patching
+        let mut test_buffer = buffer.clone();
+        FrameHeader::patch_sample_rate(&mut test_buffer, 96000).unwrap();
+        let updated = FrameHeader::decode(&mut &test_buffer[..]).unwrap();
+        assert_eq!(updated.sample_rate(), 96000); // Changed field
+        assert_eq!(*updated.encoding(), *original.encoding());
+        assert_eq!(updated.sample_size(), original.sample_size());
+        assert_eq!(updated.channels(), original.channels());
+        assert_eq!(updated.bits_per_sample(), original.bits_per_sample());
+        assert_eq!(*updated.endianness(), *original.endianness());
+        assert_eq!(updated.id(), original.id());
+        assert_eq!(updated.pts(), original.pts());
+
+        // Test bits per sample patching
+        let mut test_buffer = buffer.clone();
+        FrameHeader::patch_bits_per_sample(&mut test_buffer, 32).unwrap();
+        let updated = FrameHeader::decode(&mut &test_buffer[..]).unwrap();
+        assert_eq!(updated.bits_per_sample(), 32); // Changed field
+        assert_eq!(*updated.encoding(), *original.encoding());
+        assert_eq!(updated.sample_size(), original.sample_size());
+        assert_eq!(updated.sample_rate(), original.sample_rate());
+        assert_eq!(updated.channels(), original.channels());
+        assert_eq!(*updated.endianness(), *original.endianness());
+        assert_eq!(updated.id(), original.id());
+        assert_eq!(updated.pts(), original.pts());
+
+        // Test channels patching
+        let mut test_buffer = buffer.clone();
+        FrameHeader::patch_channels(&mut test_buffer, 8).unwrap();
+        let updated = FrameHeader::decode(&mut &test_buffer[..]).unwrap();
+        assert_eq!(updated.channels(), 8); // Changed field
+        assert_eq!(*updated.encoding(), *original.encoding());
+        assert_eq!(updated.sample_size(), original.sample_size());
+        assert_eq!(updated.sample_rate(), original.sample_rate());
+        assert_eq!(updated.bits_per_sample(), original.bits_per_sample());
+        assert_eq!(*updated.endianness(), *original.endianness());
+        assert_eq!(updated.id(), original.id());
+        assert_eq!(updated.pts(), original.pts());
+
+        // Test ID patching
+        let mut test_buffer = buffer.clone();
+        FrameHeader::patch_id(&mut test_buffer, Some(0xFEEDFACE)).unwrap();
+        let updated = FrameHeader::decode(&mut &test_buffer[..]).unwrap();
+        assert_eq!(updated.id(), Some(0xFEEDFACE)); // Changed field
+        assert_eq!(*updated.encoding(), *original.encoding());
+        assert_eq!(updated.sample_size(), original.sample_size());
+        assert_eq!(updated.sample_rate(), original.sample_rate());
+        assert_eq!(updated.channels(), original.channels());
+        assert_eq!(updated.bits_per_sample(), original.bits_per_sample());
+        assert_eq!(*updated.endianness(), *original.endianness());
+        assert_eq!(updated.pts(), original.pts());
+
+        // Test PTS patching
+        let mut test_buffer = buffer.clone();
+        FrameHeader::patch_pts(&mut test_buffer, Some(0xF00DFACE)).unwrap();
+        let updated = FrameHeader::decode(&mut &test_buffer[..]).unwrap();
+        assert_eq!(updated.pts(), Some(0xF00DFACE)); // Changed field
+        assert_eq!(*updated.encoding(), *original.encoding());
+        assert_eq!(updated.sample_size(), original.sample_size());
+        assert_eq!(updated.sample_rate(), original.sample_rate());
+        assert_eq!(updated.channels(), original.channels());
+        assert_eq!(updated.bits_per_sample(), original.bits_per_sample());
+        assert_eq!(*updated.endianness(), *original.endianness());
+        assert_eq!(updated.id(), original.id());
+    }
+
+    #[test]
+    fn test_magic_word_off_by_one() {
+        // Create a valid header as base
+        let valid_header = FrameHeader::new(
+            EncodingFlag::PCMSigned,
+            1024,
+            48000,
+            2,
+            24,
+            Endianness::LittleEndian,
+            None,
+            None,
+        )
+        .unwrap();
+        let mut valid_buffer = Vec::new();
+        valid_header.encode(&mut valid_buffer).unwrap();
+
+        // Test magic word off by one higher
+        let mut buffer = valid_buffer.clone();
+        let mut header = u32::from_be_bytes(buffer[..4].try_into().unwrap());
+        header = (header & !FrameHeader::MAGIC_MASK)
+            | ((FrameHeader::MAGIC_WORD + 1) << FrameHeader::MAGIC_SHIFT);
+        buffer[..4].copy_from_slice(&header.to_be_bytes());
+        assert!(
+            FrameHeader::decode(&mut &buffer[..]).is_err(),
+            "Failed to detect magic word too high"
+        );
+        assert!(
+            !FrameHeader::validate_header(&buffer).unwrap(),
+            "Validation passed with magic word too high"
+        );
+
+        // Test magic word off by one lower
+        let mut buffer = valid_buffer.clone();
+        let mut header = u32::from_be_bytes(buffer[..4].try_into().unwrap());
+        header = (header & !FrameHeader::MAGIC_MASK)
+            | ((FrameHeader::MAGIC_WORD - 1) << FrameHeader::MAGIC_SHIFT);
+        buffer[..4].copy_from_slice(&header.to_be_bytes());
+        assert!(
+            FrameHeader::decode(&mut &buffer[..]).is_err(),
+            "Failed to detect magic word too low"
+        );
+        assert!(
+            !FrameHeader::validate_header(&buffer).unwrap(),
+            "Validation passed with magic word too low"
+        );
+
+        // Test magic word shifted right by one bit
+        let mut buffer = valid_buffer.clone();
+        let mut header = u32::from_be_bytes(buffer[..4].try_into().unwrap());
+        header = (header & !FrameHeader::MAGIC_MASK)
+            | ((FrameHeader::MAGIC_WORD >> 1) << FrameHeader::MAGIC_SHIFT);
+        buffer[..4].copy_from_slice(&header.to_be_bytes());
+        assert!(
+            FrameHeader::decode(&mut &buffer[..]).is_err(),
+            "Failed to detect magic word bit-shifted right"
+        );
+        assert!(
+            !FrameHeader::validate_header(&buffer).unwrap(),
+            "Validation passed with magic word bit-shifted right"
+        );
+
+        // Test magic word shifted left by one bit
+        let mut buffer = valid_buffer.clone();
+        let mut header = u32::from_be_bytes(buffer[..4].try_into().unwrap());
+        header = (header & !FrameHeader::MAGIC_MASK)
+            | ((FrameHeader::MAGIC_WORD << 1) << FrameHeader::MAGIC_SHIFT);
+        buffer[..4].copy_from_slice(&header.to_be_bytes());
+        assert!(
+            FrameHeader::decode(&mut &buffer[..]).is_err(),
+            "Failed to detect magic word bit-shifted left"
+        );
+        assert!(
+            !FrameHeader::validate_header(&buffer).unwrap(),
+            "Validation passed with magic word bit-shifted left"
+        );
+
+        // Test magic word at wrong bit position (shifted by 1 in final header)
+        let mut buffer = valid_buffer;
+        let mut header = u32::from_be_bytes(buffer[..4].try_into().unwrap());
+        header = (header & !FrameHeader::MAGIC_MASK)
+            | (FrameHeader::MAGIC_WORD << (FrameHeader::MAGIC_SHIFT + 1));
+        buffer[..4].copy_from_slice(&header.to_be_bytes());
+        assert!(
+            FrameHeader::decode(&mut &buffer[..]).is_err(),
+            "Failed to detect magic word at wrong position"
+        );
+        assert!(
+            !FrameHeader::validate_header(&buffer).unwrap(),
+            "Validation passed with magic word at wrong position"
+        );
+    }
 }
