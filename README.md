@@ -1,11 +1,11 @@
 # Audio Frame Header Library
 
-A Rust library implementing a compact and efficient binary frame header format for audio data. The header format supports multiple audio encodings, sample rates, and channel configurations while maintaining a small footprint.
+A Rust library implementing a compact and efficient binary frame header format for audio and video data. The header format supports multiple encodings, sample rates, and channel configurations while maintaining a small footprint.
 
 ## Features
 
-- Compact 32-bit header format with optional 64-bit ID
-- Support for multiple audio encodings (PCM, Opus, FLAC, AAC)
+- Compact 32-bit base header with optional 64-bit ID and PTS fields
+- Support for multiple encodings (PCM Signed/Float, Opus, FLAC, AAC, H264)
 - Efficient bit-packed fields for maximum space utilization
 - WASM compatibility with special ID handling
 - Comprehensive validation of audio parameters
@@ -14,18 +14,23 @@ A Rust library implementing a compact and efficient binary frame header format f
 
 ## Header Format
 
-The header uses a 32-bit format with the following bit layout:
+The header uses a 32-bit base format with optional 64-bit fields:
 
 ```
-[31-23] Magic Word (9 bits)  = 0x155
-[22-20] Encoding Flag (3 bits)
-[19-18] Sample Rate (2 bits)
-[17-14] Channels (4 bits)
-[13-2]  Sample Size (12 bits)
-[1]     Bits Per Sample (2 bits)
-[0]     Endianness (1 bit)
-[0]     ID Present Flag (1 bit)
-[Optional] 64-bit ID
+Base Header (32 bits):
+[31-26] Magic Word (6 bits) = 0x2A
+[25-24] Sample Rate (2 bits)
+[23-22] Bits Per Sample (2 bits)
+[21]    PTS Present Flag (1 bit)
+[20]    ID Present Flag (1 bit)
+[19-17] Encoding Flag (3 bits)
+[16]    Endianness (1 bit)
+[15-12] Channels-1 (4 bits)
+[11-0]  Sample Size (12 bits)
+
+Optional Fields:
+- 64-bit ID (if ID flag set)
+- 64-bit PTS (if PTS flag set)
 ```
 
 ### Supported Parameters
@@ -36,7 +41,9 @@ The header uses a 32-bit format with the following bit layout:
 - **Bits Per Sample**: 16, 24, 32
 - **Endianness**: Little/Big Endian
 - **Sample Size**: Up to 4095 samples
-- **Optional ID**: 64-bit identifier
+- **Optional Fields**: 
+  - 64-bit ID
+  - 64-bit PTS (Presentation Timestamp)
 
 ## Usage
 
@@ -53,6 +60,7 @@ let header = FrameHeader::new(
     24,                      // bits_per_sample
     Endianness::LittleEndian,
     Some(12345),            // optional id
+    Some(67890),            // optional pts
 )?;
 ```
 
@@ -76,6 +84,8 @@ FrameHeader::patch_encoding(&mut header_bytes, EncodingFlag::FLAC)?;
 FrameHeader::patch_sample_rate(&mut header_bytes, 96000)?;
 FrameHeader::patch_channels(&mut header_bytes, 4)?;
 FrameHeader::patch_bits_per_sample(&mut header_bytes, 32)?;
+FrameHeader::patch_id(&mut header_bytes, Some(0xDEADBEEF))?;
+FrameHeader::patch_pts(&mut header_bytes, Some(0xCAFEBABE))?;
 ```
 
 ### Quick Field Extraction
@@ -85,14 +95,22 @@ FrameHeader::patch_bits_per_sample(&mut header_bytes, 32)?;
 let sample_count = FrameHeader::extract_sample_count(&header_bytes)?;
 let encoding = FrameHeader::extract_encoding(&header_bytes)?;
 let id = FrameHeader::extract_id(&header_bytes)?;
+let pts = FrameHeader::extract_pts(&header_bytes)?;
 ```
+
+### Header Size
+
+The total header size varies based on the presence of optional fields:
+- Base header: 4 bytes
+- With ID: 12 bytes
+- With PTS: 12 bytes
+- With both ID and PTS: 20 bytes
 
 ## Validation
 
 The library performs extensive validation:
-
-- Magic word verification
-- Valid sample rates check
+- Magic word verification (0x2A)
+- Valid sample rates (44.1kHz, 48kHz, 88.2kHz, 96kHz)
 - Channel count limits (1-16)
 - Supported bits per sample (16, 24, 32)
 - Maximum sample size (4095)
@@ -102,7 +120,6 @@ The library performs extensive validation:
 ## WASM Support
 
 The library includes special handling for 64-bit IDs in WASM environments:
-
 - IDs are serialized as strings in WASM
 - Custom serialization/deserialization implementations
 - Maintains compatibility across platforms
@@ -113,6 +130,18 @@ The library includes special handling for 64-bit IDs in WASM environments:
 - Field extraction without full parsing
 - In-place modification capabilities
 - Efficient binary operations
+- Header size adapts to optional fields
+
+## Testing
+
+The library includes comprehensive tests covering:
+- Encoding/decoding roundtrips
+- Field validation
+- Boundary conditions
+- WASM compatibility
+- Field isolation during patching
+- Optional field handling
+- Edge cases and error conditions
 
 ## License
 
