@@ -41,7 +41,7 @@ Optional Fields:
 - **Bits Per Sample**: 16, 24, 32
 - **Endianness**: Little/Big Endian
 - **Sample Size**: Up to 4095 samples
-- **Optional Fields**: 
+- **Optional Fields**:
   - 64-bit ID
   - 64-bit PTS (Presentation Timestamp)
 
@@ -101,6 +101,7 @@ let pts = FrameHeader::extract_pts(&header_bytes)?;
 ### Header Size
 
 The total header size varies based on the presence of optional fields:
+
 - Base header: 4 bytes
 - With ID: 12 bytes
 - With PTS: 12 bytes
@@ -109,6 +110,7 @@ The total header size varies based on the presence of optional fields:
 ## Validation
 
 The library performs extensive validation:
+
 - Magic word verification (0x2A)
 - Valid sample rates (44.1kHz, 48kHz, 88.2kHz, 96kHz)
 - Channel count limits (1-16)
@@ -120,6 +122,7 @@ The library performs extensive validation:
 ## WASM Support
 
 The library includes special handling for 64-bit IDs in WASM environments:
+
 - IDs are serialized as strings in WASM
 - Custom serialization/deserialization implementations
 - Maintains compatibility across platforms
@@ -135,6 +138,7 @@ The library includes special handling for 64-bit IDs in WASM environments:
 ## Testing
 
 The library includes comprehensive tests covering:
+
 - Encoding/decoding roundtrips
 - Field validation
 - Boundary conditions
