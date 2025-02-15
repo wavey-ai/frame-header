@@ -90,7 +90,7 @@ impl FrameHeader {
 
     const SAMPLE_SIZE_MASK: u32 = 0xFFF;
 
-    const VALID_SAMPLE_RATES: [u32; 4] = [44100, 48000, 88200, 96000];
+    const VALID_SAMPLE_RATES: [u32; 4] = [16000, 44100, 48000, 96000];
     const MAX_SAMPLE_SIZE: u16 = 0xFFF;
 
     pub fn new(
@@ -143,9 +143,9 @@ impl FrameHeader {
         let mut header: u32 = Self::MAGIC_WORD << Self::MAGIC_SHIFT;
 
         let sample_rate_code = match self.sample_rate {
-            44100 => 0,
-            48000 => 1,
-            88200 => 2,
+            16000 => 0,
+            44100 => 1,
+            48000 => 2,
             96000 => 3,
             _ => {
                 return Err(io::Error::new(
@@ -202,9 +202,9 @@ impl FrameHeader {
         }
 
         let sample_rate = match (header & Self::SAMPLE_RATE_MASK) >> Self::SAMPLE_RATE_SHIFT {
-            0 => 44100,
-            1 => 48000,
-            2 => 88200,
+            0 => 16000,
+            1 => 44100,
+            2 => 48000,
             3 => 96000,
             _ => {
                 return Err(io::Error::new(
@@ -498,9 +498,9 @@ impl FrameHeader {
         }
 
         let rate_code = match sample_rate {
-            44100 => 0,
-            48000 => 1,
-            88200 => 2,
+            16000 => 0,
+            44100 => 1,
+            48000 => 2,
             96000 => 3,
             _ => {
                 return Err(format!(
@@ -852,7 +852,7 @@ mod tests {
     fn test_valid_opus_and_flac_sample_sizes_with_varied_pts_and_ids() {
         let opus_sample_sizes = [80, 160, 240, 480, 960, 1920, 2880];
         let flac_sample_sizes = [512, 1024, 2048];
-        let sample_rates = [44100, 48000, 88200, 96000];
+        let sample_rates = [16000, 44100, 48000, 96000];
         let channels_list = [1, 2, 8, 16];
         let bits_list = [16, 24, 32];
         let endianness_list = [Endianness::LittleEndian, Endianness::BigEndian];
