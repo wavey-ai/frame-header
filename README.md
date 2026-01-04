@@ -1,5 +1,7 @@
 # Audio Frame Header Library
 
+[![CI](https://github.com/wavey-ai/frame-header/actions/workflows/ci.yml/badge.svg)](https://github.com/wavey-ai/frame-header/actions/workflows/ci.yml)
+
 A Rust library implementing a compact and efficient binary frame header format for audio and video data. The header format supports multiple encodings, sample rates, and channel configurations while maintaining a small footprint.
 
 ## Features
