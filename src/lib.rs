@@ -164,8 +164,8 @@ impl FrameHeaderV2 {
     const FLAG_BIG_ENDIAN: u8 = 1 << 4;
     const FLAG_EXTENDED_SIZES: u8 = 1 << 5;
     pub const FLAG_DISCONTINUITY: u8 = 1 << 6;
-    pub const FLAG_CONFIG: u8 = 1 << 7;
-    const PUBLIC_PACKET_FLAGS: u8 = Self::FLAG_DISCONTINUITY | Self::FLAG_CONFIG;
+    pub const FLAG_ENCRYPTED: u8 = 1 << 7;
+    const PUBLIC_PACKET_FLAGS: u8 = Self::FLAG_DISCONTINUITY | Self::FLAG_ENCRYPTED;
 
     pub const BASE_SIZE: usize = 8;
     pub const EXTENDED_SIZE_BYTES: usize = 8;
@@ -424,71 +424,9 @@ impl FrameHeaderV2 {
     }
 
     pub fn validate_header(header_bytes: &[u8]) -> Result<bool, String> {
-        if header_bytes.len() < Self::BASE_SIZE {
-            return Err("Header too small".to_string());
-        }
-
-        let word = u32::from_be_bytes(header_bytes[..4].try_into().unwrap());
-        if (word & Self::MAGIC_MASK) >> Self::MAGIC_SHIFT != Self::MAGIC_WORD {
+        let Ok(expected_size) = Self::header_size(header_bytes) else {
             return Ok(false);
-        }
-        if (word & Self::VERSION_MASK) >> Self::VERSION_SHIFT != Self::VERSION {
-            return Ok(false);
-        }
-
-        let flags = ((word & Self::FLAGS_MASK) >> Self::FLAGS_SHIFT) as u8;
-        if flags & Self::FLAG_ID_U64 != 0 && flags & Self::FLAG_ID_PRESENT == 0 {
-            return Ok(false);
-        }
-        if encoding_from_code((word & Self::ENCODING_MASK) >> Self::ENCODING_SHIFT).is_none() {
-            return Ok(false);
-        }
-        if Self::sample_rate_from_code((word & Self::SAMPLE_RATE_MASK) >> Self::SAMPLE_RATE_SHIFT)
-            .is_none()
-        {
-            return Ok(false);
-        }
-        if Self::bits_from_code(word & Self::BITS_MASK).is_none() {
-            return Ok(false);
-        }
-        let size_word = u32::from_be_bytes(header_bytes[4..8].try_into().unwrap());
-        let extended_sizes = flags & Self::FLAG_EXTENDED_SIZES != 0;
-        if extended_sizes && size_word != 0xFFFF_FFFF {
-            return Ok(false);
-        }
-        if !extended_sizes
-            && (((size_word >> 16) & 0xFFFF) == Self::SHORT_SIZE_SENTINEL
-                || (size_word & 0xFFFF) == Self::SHORT_SIZE_SENTINEL)
-        {
-            return Ok(false);
-        }
-
-        let expected_size = Self::BASE_SIZE
-            + if extended_sizes {
-                Self::EXTENDED_SIZE_BYTES
-            } else {
-                0
-            }
-            + if flags & Self::FLAG_ID_PRESENT != 0 {
-                if flags & Self::FLAG_ID_U64 != 0 {
-                    8
-                } else {
-                    4
-                }
-            } else {
-                0
-            }
-            + if flags & Self::FLAG_PTS_PRESENT != 0 {
-                8
-            } else {
-                0
-            }
-            + if flags & Self::FLAG_PACKET_CRC32_PRESENT != 0 {
-                4
-            } else {
-                0
-            };
-
+        };
         Ok(header_bytes.len() >= expected_size)
     }
 
@@ -550,6 +488,78 @@ impl FrameHeaderV2 {
 
     pub fn packet_flags(&self) -> u8 {
         self.packet_flags
+    }
+
+    pub fn is_encrypted(&self) -> bool {
+        self.packet_flags & Self::FLAG_ENCRYPTED != 0
+    }
+
+    pub fn header_size(header_bytes: &[u8]) -> Result<usize, String> {
+        if header_bytes.len() < Self::BASE_SIZE {
+            return Err("Header too small to inspect v2 header size".to_string());
+        }
+
+        let word = u32::from_be_bytes(header_bytes[..4].try_into().unwrap());
+        if (word & Self::MAGIC_MASK) >> Self::MAGIC_SHIFT != Self::MAGIC_WORD {
+            return Err("Invalid v2 header magic".to_string());
+        }
+        if (word & Self::VERSION_MASK) >> Self::VERSION_SHIFT != Self::VERSION {
+            return Err("Invalid v2 header version".to_string());
+        }
+
+        let flags = ((word & Self::FLAGS_MASK) >> Self::FLAGS_SHIFT) as u8;
+        if flags & Self::FLAG_ID_U64 != 0 && flags & Self::FLAG_ID_PRESENT == 0 {
+            return Err("v2 header has 64-bit ID flag without ID present".to_string());
+        }
+        if encoding_from_code((word & Self::ENCODING_MASK) >> Self::ENCODING_SHIFT).is_none() {
+            return Err("Invalid v2 encoding flag".to_string());
+        }
+        if Self::sample_rate_from_code((word & Self::SAMPLE_RATE_MASK) >> Self::SAMPLE_RATE_SHIFT)
+            .is_none()
+        {
+            return Err("Invalid v2 sample-rate code".to_string());
+        }
+        if Self::bits_from_code(word & Self::BITS_MASK).is_none() {
+            return Err("Invalid v2 bits-per-sample code".to_string());
+        }
+
+        let size_word = u32::from_be_bytes(header_bytes[4..8].try_into().unwrap());
+        let extended_sizes = flags & Self::FLAG_EXTENDED_SIZES != 0;
+        if extended_sizes && size_word != 0xFFFF_FFFF {
+            return Err("Extended v2 sizes must use short-size sentinels".to_string());
+        }
+        if !extended_sizes
+            && (((size_word >> 16) & 0xFFFF) == Self::SHORT_SIZE_SENTINEL
+                || (size_word & 0xFFFF) == Self::SHORT_SIZE_SENTINEL)
+        {
+            return Err("Short-size sentinel requires extended v2 sizes".to_string());
+        }
+
+        Ok(Self::BASE_SIZE
+            + if extended_sizes {
+                Self::EXTENDED_SIZE_BYTES
+            } else {
+                0
+            }
+            + if flags & Self::FLAG_ID_PRESENT != 0 {
+                if flags & Self::FLAG_ID_U64 != 0 {
+                    8
+                } else {
+                    4
+                }
+            } else {
+                0
+            }
+            + if flags & Self::FLAG_PTS_PRESENT != 0 {
+                8
+            } else {
+                0
+            }
+            + if flags & Self::FLAG_PACKET_CRC32_PRESENT != 0 {
+                4
+            } else {
+                0
+            })
     }
 
     pub fn extract_payload_size(header_bytes: &[u8]) -> Result<u32, String> {
@@ -1839,6 +1849,36 @@ mod tests {
         assert!(!decoded
             .verify_packet_crc32(&buffer, &corrupted_payload)
             .unwrap());
+    }
+
+    #[test]
+    fn test_v2_encrypted_packet_flag_roundtrip() {
+        let header = FrameHeaderV2::new(
+            EncodingFlag::Opus,
+            32,
+            960,
+            48000,
+            2,
+            0,
+            Endianness::LittleEndian,
+            Some(17),
+            Some(20_000),
+            None,
+        )
+        .unwrap()
+        .with_packet_flags(FrameHeaderV2::FLAG_ENCRYPTED)
+        .unwrap();
+
+        let mut buffer = Vec::new();
+        header.encode(&mut buffer).unwrap();
+
+        assert_eq!(FrameHeaderV2::header_size(&buffer).unwrap(), header.size());
+        let decoded = FrameHeaderV2::decode(&mut &buffer[..]).unwrap();
+        assert!(decoded.is_encrypted());
+        assert_eq!(
+            decoded.packet_flags() & FrameHeaderV2::FLAG_ENCRYPTED,
+            FrameHeaderV2::FLAG_ENCRYPTED
+        );
     }
 
     #[test]
