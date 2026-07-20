@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/wavey-ai/frame-header/actions/workflows/ci.yml/badge.svg)](https://github.com/wavey-ai/frame-header/actions/workflows/ci.yml)
 
-A Rust library implementing compact and efficient binary frame headers for audio packets. The v1 header is kept for compatibility; `FrameHeaderV2` adds exact payload sizing, decoded frame counts, compact IDs, and optional packet CRC32.
+A Rust library implementing compact and efficient binary frame headers for audio packets. The v1 header is kept for compatibility.`FrameHeaderV2` adds exact payload sizing, decoded frame counts, compact IDs, and optional packet CRC32.
 
 ## Features
 
